@@ -69,7 +69,7 @@ contract L1BossBridge is Ownable, Pausable, ReentrancyGuard {
      * @param amount The amount of tokens to deposit
      */
 
-    // @audit-high
+    // @writen-audit-high
     // if a user approve the bridge, ny other user can steal their funds
     function depositTokensToL2(address from, address l2Recipient, uint256 amount) external whenNotPaused {
         if (token.balanceOf(address(vault)) + amount > DEPOSIT_LIMIT) {

